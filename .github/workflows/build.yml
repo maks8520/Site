@@ -16,6 +16,9 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Fix Git Safe Directory
+      run: git config --global --add safe.directory /__w/Site/Site
+
     - name: Build Vostochnaya Baza (ESP32-S3)
       run: |
         . $IDF_PATH/export.sh
