@@ -1,3 +1,6 @@
+ esp-idf-setup-10902462744309710451
+#include <stdio.h>
+
 #include "esp_now_receiver.h"
 #include "esp_log.h"
 #include "string.h"
@@ -44,3 +47,4 @@ void esp_now_receiver_init(void) {
 
     ESP_LOGI(TAG, "ESP-NOW Init completed");
 }
+main

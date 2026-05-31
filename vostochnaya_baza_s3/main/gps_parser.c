@@ -1,3 +1,6 @@
+ esp-idf-setup-10902462744309710451
+#include <stdio.h>
+
 #include "gps_parser.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -124,3 +127,4 @@ void gps_task(void *pvParameters) {
     free(data);
     vTaskDelete(NULL);
 }
+ main
