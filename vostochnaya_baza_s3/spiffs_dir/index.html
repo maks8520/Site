@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vostochnaya Baza S3</title>
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Scripts -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #050b14; /* Navy Black */
+            --panel-bg: rgba(5, 11, 20, 0.4);
+            --neon-lime: #d4ff8f;
+            --neon-cyan: #7dd3fc;
+            --border-color: rgba(125, 211, 252, 0.3);
+            --text-main: #e2e8f0;
+            --font-main: 'Space Grotesk', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            background-image:
+                radial-gradient(circle at 15% 50%, rgba(125, 211, 252, 0.05), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(212, 255, 143, 0.05), transparent 25%);
+            color: var(--text-main);
+            font-family: var(--font-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .glass-panel {
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            margin: 10px;
+        }
+
+        .header-info {
+            display: flex;
+            gap: 20px;
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+        }
+
+        .ws-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .ws-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #ef4444; /* red by default */
+            box-shadow: 0 0 5px #ef4444;
+        }
+        .ws-indicator.connected {
+            background-color: var(--neon-lime);
+            box-shadow: 0 0 8px var(--neon-lime);
+        }
+
+        .gps-coords {
+            color: var(--neon-cyan);
+        }
+
+        /* Navigation */
+        nav {
+            display: flex;
+            gap: 10px;
+            padding: 0 20px;
+        }
+
+        .tab-btn {
+            background: rgba(125, 211, 252, 0.1);
+            border: 1px solid var(--border-color);
+            color: var(--neon-cyan);
+            padding: 10px 20px;
+            font-family: var(--font-main);
+            font-weight: 600;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+
+        .tab-btn:hover {
+            background: rgba(125, 211, 252, 0.2);
+        }
+
+        .tab-btn.active {
+            background: rgba(212, 255, 143, 0.2);
+            color: var(--neon-lime);
+            border-color: var(--neon-lime);
+            box-shadow: 0 0 10px rgba(212, 255, 143, 0.2);
+        }
+
+        /* Main Content */
+        main {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .tab-content {
+            display: none;
+            height: 100%;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .tab-content.active {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Meteo Tab */
+        .meteo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            height: 100%;
+        }
+
+        .chart-container {
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chart-container h3 {
+            margin: 0 0 15px 0;
+            color: var(--neon-cyan);
+            font-family: var(--font-mono);
+            font-size: 1rem;
+        }
+
+        .chart-wrapper {
+            flex-grow: 1;
+            position: relative;
+        }
+
+        .warning-badge {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid #ef4444;
+            color: #ef4444;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            display: inline-block;
+            margin-bottom: 15px;
+            box-shadow: 0 0 5px rgba(239, 68, 68, 0.5);
+        }
+
+        /* Fishing Tab */
+        .fishing-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 20px;
+            height: 100%;
+        }
+
+        .map-container {
+            grid-column: 1 / 2;
+            grid-row: 1 / 3;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+            background-color: #111; /* fallback */
+        }
+
+        .activity-panel {
+            grid-column: 2 / 3;
+            grid-row: 1 / 2;
+        }
+
+        .status-panel {
+            grid-column: 2 / 3;
+            grid-row: 2 / 3;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .battery-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-family: var(--font-mono);
+        }
+
+        .battery-bar {
+            flex-grow: 1;
+            height: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .battery-level {
+            height: 100%;
+            background: var(--neon-lime);
+            width: 80%;
+            box-shadow: 0 0 5px var(--neon-lime);
+        }
+
+        .timeline {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .timeline-item {
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .timeline-item .time {
+            color: var(--neon-cyan);
+            margin-right: 10px;
+        }
+
+        /* Journal Tab */
+        .journal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .export-btn {
+            background: transparent;
+            border: 1px solid var(--neon-lime);
+            color: var(--neon-lime);
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: var(--font-mono);
+            transition: all 0.3s;
+        }
+
+        .export-btn:hover {
+            background: rgba(212, 255, 143, 0.1);
+            box-shadow: 0 0 8px rgba(212, 255, 143, 0.3);
+        }
+
+        .table-container {
+            flex-grow: 1;
+            overflow: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        th {
+            color: var(--neon-cyan);
+            position: sticky;
+            top: 0;
+            background: var(--bg-color);
+            z-index: 10;
+        }
+
+        tr:hover {
+            background: rgba(255,255,255,0.02);
+        }
+
+        .log-level-info { color: var(--neon-cyan); }
+        .log-level-warn { color: #facc15; }
+        .log-level-error { color: #ef4444; }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.2);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--neon-cyan);
+        }
+    </style>
+</head>
+<body>
+
+    <header class="glass-panel" aria-label="System Header">
+        <h1 style="margin:0; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 2px; color: var(--text-main);">
+            <span style="color: var(--neon-lime);">SYS</span>_BAZA
+        </h1>
+        <div class="header-info">
+            <div class="gps-coords" aria-label="GPS Coordinates" id="gps-display">
+                LAT: 43.1155 | LON: 131.8855
+            </div>
+            <div class="ws-status" aria-label="WebSocket Connection Status">
+                <span class="ws-indicator" id="ws-indicator"></span>
+                <span id="ws-text">DISCONNECTED</span>
+            </div>
+        </div>
+    </header>
+
+    <nav aria-label="Main Navigation">
+        <button class="tab-btn active" aria-label="Open Meteo Tab" aria-controls="tab-meteo" onclick="switchTab('meteo')">МЕТЕО</button>
+        <button class="tab-btn" aria-label="Open Fishing Tab" aria-controls="tab-fishing" onclick="switchTab('fishing')">РЫБАЛКА</button>
+        <button class="tab-btn" aria-label="Open Journal Tab" aria-controls="tab-journal" onclick="switchTab('journal')">ЖУРНАЛ</button>
+    </nav>
+
+    <main aria-live="polite">
+        <!-- METEO TAB -->
+        <div id="tab-meteo" class="tab-content active" role="tabpanel" aria-labelledby="meteo-tab">
+            <div class="glass-panel chart-container" style="flex: none;">
+                <div class="warning-badge" id="cache-warning" style="display: none;" aria-live="assertive">
+                    ⚠️ ВНИМАНИЕ: ДАННЫЕ ИЗ КЭША УСТАРЕЛИ
+                </div>
+                <div style="display: flex; gap: 20px; align-items: center; font-family: var(--font-mono);" aria-label="Current Weather Summary">
+                    <div>T: <span style="color:var(--neon-lime)">-12°C</span></div>
+                    <div>P: <span style="color:var(--neon-cyan)">1013 hPa</span></div>
+                    <div>HUM: <span style="color:var(--neon-lime)">45%</span></div>
+                </div>
+            </div>
+
+            <div class="meteo-grid">
+                <div class="glass-panel chart-container">
+                    <h3>ВЕТЕР (ВЫСОТЫ)</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="windChart" aria-label="Wind profile chart at different altitudes"></canvas>
+                    </div>
+                </div>
+                <div class="glass-panel chart-container">
+                    <h3>ДАВЛЕНИЕ И ОБЛАЧНОСТЬ</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="pressureChart" aria-label="Atmospheric pressure and cloud cover chart over time"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- FISHING TAB -->
+        <div id="tab-fishing" class="tab-content" role="tabpanel" aria-labelledby="fishing-tab">
+            <div class="fishing-layout">
+                <div class="map-container" aria-label="Interactive Map of base and rods">
+                    <div id="map"></div>
+                </div>
+
+                <div class="glass-panel chart-container activity-panel">
+                    <h3>АКТИВНОСТЬ УДОЧКИ (X/Z)</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="activityChart" aria-label="Real-time rod activity chart on X and Z axes"></canvas>
+                    </div>
+                </div>
+
+                <div class="glass-panel chart-container status-panel">
+                    <h3>СТАТУС СИСТЕМ</h3>
+
+                    <div class="battery-indicator" aria-label="Battery 1 level">
+                        <span>БАТАРЕЯ 1</span>
+                        <div class="battery-bar" aria-hidden="true">
+                            <div class="battery-level" style="width: 85%;"></div>
+                        </div>
+                        <span style="color: var(--neon-lime);">85%</span>
+                    </div>
+
+                    <div class="battery-indicator" aria-label="Battery 2 level">
+                        <span>БАТАРЕЯ 2</span>
+                        <div class="battery-bar" aria-hidden="true">
+                            <div class="battery-level" style="width: 42%; background: #facc15; box-shadow: 0 0 5px #facc15;"></div>
+                        </div>
+                        <span style="color: #facc15;">42%</span>
+                    </div>
+
+                    <h3 style="margin-top: 10px;">ТАЙМЛАЙН ПОКЛЕВОК</h3>
+                    <div class="timeline" aria-label="Bites timeline events">
+                        <div class="timeline-item"><span class="time">14:32:10</span> Удочка 1 - Резкий рывок (Z: 2.4g)</div>
+                        <div class="timeline-item"><span class="time">14:15:00</span> Удочка 2 - Подергивание (X: 1.1g)</div>
+                        <div class="timeline-item"><span class="time">13:45:22</span> Удочка 1 - Активность (Z: 1.8g)</div>
+                        <div class="timeline-item"><span class="time">12:10:05</span> Система инициализирована</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- JOURNAL TAB -->
+        <div id="tab-journal" class="tab-content" role="tabpanel" aria-labelledby="journal-tab">
+            <div class="glass-panel chart-container" style="height: 100%;">
+                <div class="journal-header">
+                    <h3>СИСТЕМНЫЙ ЖУРНАЛ</h3>
+                    <button class="export-btn" aria-label="Export Logs to CSV" onclick="exportCSV()">ЭКСПОРТ В CSV</button>
+                </div>
+
+                <div class="table-container" tabindex="0" aria-label="System Logs Table">
+                    <table aria-label="System Logs">
+                        <thead>
+                            <tr>
+                                <th>ВРЕМЯ</th>
+                                <th>УРОВЕНЬ</th>
+                                <th>МОДУЛЬ</th>
+                                <th>СООБЩЕНИЕ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="log-table-body">
+                            <tr>
+                                <td>2023-10-25 14:32:11</td>
+                                <td class="log-level-warn">WARN</td>
+                                <td>FISHING</td>
+                                <td>Обнаружен рывок выше порога (2.4g)</td>
+                            </tr>
+                            <tr>
+                                <td>2023-10-25 14:30:00</td>
+                                <td class="log-level-info">INFO</td>
+                                <td>METEO</td>
+                                <td>Обновление данных погоды завершено</td>
+                            </tr>
+                            <tr>
+                                <td>2023-10-25 14:10:22</td>
+                                <td class="log-level-error">ERROR</td>
+                                <td>WIFI</td>
+                                <td>Потеря пакетов > 15%</td>
+                            </tr>
+                            <tr>
+                                <td>2023-10-25 14:00:00</td>
+                                <td class="log-level-info">INFO</td>
+                                <td>SYSTEM</td>
+                                <td>Плановая синхронизация времени</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // SPA Tab Logic
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            document.querySelector(`[aria-controls="tab-${tabId}"]`).classList.add('active');
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+
+            // Trigger chart resize or map invalidateSize if needed
+            if(tabId === 'fishing' && window.map) {
+                setTimeout(() => window.map.invalidateSize(), 100);
+            }
+        }
+
+        // WebSocket Simulation
+        function initWebSocket() {
+            const indicator = document.getElementById('ws-indicator');
+            const text = document.getElementById('ws-text');
+            const ip = window.location.hostname || '192.168.4.1';
+
+            // Simulated connection for demo
+            setTimeout(() => {
+                indicator.classList.add('connected');
+                text.textContent = `ws://${ip}/ws`;
+                text.style.color = 'var(--neon-lime)';
+            }, 1000);
+        }
+
+        // Charts Initialization
+        function initCharts() {
+            Chart.defaults.color = 'rgba(226, 232, 240, 0.7)';
+            Chart.defaults.font.family = "'JetBrains Mono', monospace";
+
+            // Meteo: Wind
+            const ctxWind = document.getElementById('windChart').getContext('2d');
+            new Chart(ctxWind, {
+                type: 'bar', // Using horizontal bar for vertical profile
+                data: {
+                    labels: ['10m', '50m', '100m', '500m', '1000m'],
+                    datasets: [{
+                        label: 'Скорость ветра (м/с)',
+                        data: [2, 5, 8, 12, 18],
+                        backgroundColor: 'rgba(125, 211, 252, 0.5)',
+                        borderColor: '#7dd3fc',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { grid: { color: 'rgba(255,255,255,0.1)' } },
+                        y: { grid: { color: 'rgba(255,255,255,0.1)' } }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+
+            // Meteo: Pressure
+            const ctxPressure = document.getElementById('pressureChart').getContext('2d');
+            new Chart(ctxPressure, {
+                type: 'line',
+                data: {
+                    labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00'],
+                    datasets: [{
+                        label: 'Давление (hPa)',
+                        data: [1010, 1012, 1015, 1013, 1008, 1005],
+                        borderColor: '#d4ff8f',
+                        backgroundColor: 'rgba(212, 255, 143, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { grid: { color: 'rgba(255,255,255,0.1)' } },
+                        y: { grid: { color: 'rgba(255,255,255,0.1)' } }
+                    }
+                }
+            });
+
+            // Fishing: Activity
+            const ctxActivity = document.getElementById('activityChart').getContext('2d');
+            const activityChart = new Chart(ctxActivity, {
+                type: 'line',
+                data: {
+                    labels: Array.from({length: 20}, (_, i) => i),
+                    datasets: [
+                        { label: 'X Axis', data: Array.from({length: 20}, () => Math.random() * 2 - 1), borderColor: '#7dd3fc', borderWidth: 1, pointRadius: 0 },
+                        { label: 'Z Axis', data: Array.from({length: 20}, () => Math.random() * 2 - 1), borderColor: '#ef4444', borderWidth: 1, pointRadius: 0 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    scales: {
+                        x: { display: false },
+                        y: { min: -3, max: 3, grid: { color: 'rgba(255,255,255,0.1)' } }
+                    }
+                }
+            });
+
+            // Simulate real-time data
+            setInterval(() => {
+                activityChart.data.datasets[0].data.shift();
+                activityChart.data.datasets[0].data.push(Math.random() * 2 - 1);
+                activityChart.data.datasets[1].data.shift();
+                activityChart.data.datasets[1].data.push(Math.random() * 2 - 1);
+                activityChart.update();
+            }, 500);
+        }
+
+        // Leaflet Map Init
+        function initMap() {
+            // Dark mode map tiles (CartoDB Dark Matter)
+            window.map = L.map('map').setView([43.1155, 131.8855], 13);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+                subdomains: 'abcd',
+                maxZoom: 19
+            }).addTo(window.map);
+
+            // Custom markers
+            const baseIcon = L.divIcon({
+                className: 'custom-div-icon',
+                html: "<div style='background-color:#7dd3fc;width:15px;height:15px;border-radius:50%;box-shadow:0 0 10px #7dd3fc;'></div>",
+                iconSize: [15, 15],
+                iconAnchor: [7, 7]
+            });
+
+            const rodIcon = L.divIcon({
+                className: 'custom-div-icon',
+                html: "<div style='background-color:#d4ff8f;width:12px;height:12px;border-radius:50%;box-shadow:0 0 10px #d4ff8f;'></div>",
+                iconSize: [12, 12],
+                iconAnchor: [6, 6]
+            });
+
+            L.marker([43.1155, 131.8855], {icon: baseIcon}).addTo(window.map).bindPopup("<b>База</b>");
+            L.marker([43.1200, 131.8900], {icon: rodIcon}).addTo(window.map).bindPopup("<b>Удочка 1</b>");
+            L.marker([43.1100, 131.8800], {icon: rodIcon}).addTo(window.map).bindPopup("<b>Удочка 2</b>");
+        }
+
+        // Export CSV
+        function exportCSV() {
+            const rows = [];
+            const table = document.querySelector("table");
+            for (let i = 0; i < table.rows.length; i++) {
+                const row = [], cols = table.rows[i].querySelectorAll("td, th");
+                for (let j = 0; j < cols.length; j++)
+                    row.push('"' + cols[j].innerText.replace(/"/g, '""') + '"');
+                rows.push(row.join(","));
+            }
+            const csv = rows.join("\n");
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", "sys_log.csv");
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Show warning demo
+        setTimeout(() => {
+            document.getElementById('cache-warning').style.display = 'inline-block';
+        }, 5000);
+
+        // App Init
+        window.onload = () => {
+            initWebSocket();
+            initCharts();
+            initMap();
+        };
+    </script>
+</body>
+</html>
