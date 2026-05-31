@@ -14,7 +14,7 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Build Vostochnaya Baza (ESP32-S3)
       run: |
@@ -49,7 +49,7 @@ jobs:
         zip -r VOSTOK_FIRMWARE.zip VOSTOK_FIRMWARE
 
     - name: Upload Firmware Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: VOSTOK_FIRMWARE
         path: VOSTOK_FIRMWARE.zip
