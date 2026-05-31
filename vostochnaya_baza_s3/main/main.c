@@ -11,6 +11,7 @@
 #include "esp_netif.h"
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
+#define CONFIG_HTTPD_WS_SUPPORT 1
 #include "esp_http_server.h"
 #include "lwip/sockets.h"
 #include "esp_vfs_fat.h"
@@ -256,7 +257,7 @@ static void button_task(void *pvParameters) {
     while (1) {
         int r1 = gpio_get_level(BUTTON_1_GPIO);
         int r2 = gpio_get_level(BUTTON_2_GPIO);
-        bool change = false;
+
 
         if (r1 != btn1_last) {
             vTaskDelay(50 / portTICK_PERIOD_MS);
@@ -264,7 +265,7 @@ static void button_task(void *pvParameters) {
             if (r1 != btn1_state) {
                 btn1_state = r1;
                 ESP_LOGI(TAG, "Button 1 state: %d", btn1_state);
-                change = true;
+
             }
         }
 
@@ -274,7 +275,7 @@ static void button_task(void *pvParameters) {
             if (r2 != btn2_state) {
                 btn2_state = r2;
                 ESP_LOGI(TAG, "Button 2 state: %d", btn2_state);
-                change = true;
+
             }
         }
 
