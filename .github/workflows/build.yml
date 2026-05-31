@@ -21,34 +21,46 @@ jobs:
 
     - name: Build Vostochnaya Baza (ESP32-S3)
       run: |
-        . $IDF_PATH/export.sh
+        set -euo pipefail
+        . "$IDF_PATH/export.sh"
         cd vostochnaya_baza_s3
         idf.py set-target esp32s3
         idf.py build
 
     - name: Build Vostochnaya Udochka (ESP32-C3)
       run: |
-        . $IDF_PATH/export.sh
+        set -euo pipefail
+        . "$IDF_PATH/export.sh"
         cd vostochnaya_udochka_c3
         idf.py set-target esp32c3
         idf.py build
 
+    - name: Verify Build Artifacts
+      run: |
+        set -euo pipefail
+        test -f vostochnaya_baza_s3/build/bootloader/bootloader.bin
+        test -f vostochnaya_baza_s3/build/partition_table/partition-table.bin
+        test -f vostochnaya_baza_s3/build/vostochnaya_baza_s3.bin
+        test -f vostochnaya_udochka_c3/build/bootloader/bootloader.bin
+        test -f vostochnaya_udochka_c3/build/partition_table/partition-table.bin
+        test -f vostochnaya_udochka_c3/build/vostochnaya_udochka_c3.bin
+
     - name: Collect Binaries
       run: |
-        mkdir VOSTOK_FIRMWARE
-        mkdir VOSTOK_FIRMWARE/baza_s3
-        mkdir VOSTOK_FIRMWARE/udochka_c3
+        set -euo pipefail
+        rm -rf VOSTOK_FIRMWARE
+        mkdir -p VOSTOK_FIRMWARE/baza_s3
+        mkdir -p VOSTOK_FIRMWARE/udochka_c3
 
-        cp vostochnaya_baza_s3/build/bootloader/bootloader.bin VOSTOK_FIRMWARE/baza_s3/ || true
-        cp vostochnaya_baza_s3/build/partition_table/partition-table.bin VOSTOK_FIRMWARE/baza_s3/ || true
-        cp vostochnaya_baza_s3/build/vostochnaya_baza_s3.bin VOSTOK_FIRMWARE/baza_s3/ || true
-        cp vostochnaya_baza_s3/build/storage.bin VOSTOK_FIRMWARE/baza_s3/ || true
+        cp vostochnaya_baza_s3/build/bootloader/bootloader.bin VOSTOK_FIRMWARE/baza_s3/bootloader.bin
+        cp vostochnaya_baza_s3/build/partition_table/partition-table.bin VOSTOK_FIRMWARE/baza_s3/partition-table.bin
+        cp vostochnaya_baza_s3/build/vostochnaya_baza_s3.bin VOSTOK_FIRMWARE/baza_s3/vostok_nexus.bin
+        cp vostochnaya_baza_s3/build/storage.bin VOSTOK_FIRMWARE/baza_s3/storage.bin
 
-        cp vostochnaya_udochka_c3/build/bootloader/bootloader.bin VOSTOK_FIRMWARE/udochka_c3/ || true
-        cp vostochnaya_udochka_c3/build/partition_table/partition-table.bin VOSTOK_FIRMWARE/udochka_c3/ || true
-        cp vostochnaya_udochka_c3/build/vostochnaya_udochka_c3.bin VOSTOK_FIRMWARE/udochka_c3/ || true
+        cp vostochnaya_udochka_c3/build/bootloader/bootloader.bin VOSTOK_FIRMWARE/udochka_c3/bootloader.bin
+        cp vostochnaya_udochka_c3/build/partition_table/partition-table.bin VOSTOK_FIRMWARE/udochka_c3/partition-table.bin
+        cp vostochnaya_udochka_c3/build/vostochnaya_udochka_c3.bin VOSTOK_FIRMWARE/udochka_c3/vostochnaya_udochka_c3.bin
 
-        apt-get update && apt-get install -y zip
         zip -r VOSTOK_FIRMWARE.zip VOSTOK_FIRMWARE
 
     - name: Upload Firmware Artifact

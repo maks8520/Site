@@ -1,82 +1,227 @@
 #include "gps_parser.h"
+
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/time.h>
+#include <time.h>
+
+#include "driver/gpio.h"
+#include "driver/uart.h"
+#include "esp_err.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include <string.h>
-#include <stdlib.h>
-#include <sys/time.h>
-#include <time.h>
-#include <math.h>
+#include "web_server.h"
+
+#define GPS_UART UART_NUM_1
+#define GPS_UART_TX GPIO_NUM_1
+#define GPS_UART_RX GPIO_NUM_2
+#define GPS_UART_BAUD 9600
 
 static const char *TAG = "GPS";
 
-double gps_lat = 0.0;
-double gps_lon = 0.0;
-bool gps_has_fix = false;
+static portMUX_TYPE s_fix_mux = portMUX_INITIALIZER_UNLOCKED;
+static double s_latitude;
+static double s_longitude;
+static bool s_has_fix;
+static char s_utc_time[16];
 
-void parse_nmea(const char* sentence) {
-    if (strncmp(sentence, "$GPRMC", 6) == 0) {
-        char *p = strdup(sentence);
-        char *tok = strtok(p, ",");
-        int field = 0;
-        char time_str[20] = {0};
-        char date_str[20] = {0};
-        char status = 'V';
-        char lat_str[20] = {0}, lon_str[20] = {0};
-        char lat_dir = 'N', lon_dir = 'E';
-
-        while(tok != NULL) {
-            if (field == 1) strncpy(time_str, tok, sizeof(time_str)-1);
-            else if (field == 2) status = tok[0];
-            else if (field == 3) strncpy(lat_str, tok, sizeof(lat_str)-1);
-            else if (field == 4) lat_dir = tok[0];
-            else if (field == 5) strncpy(lon_str, tok, sizeof(lon_str)-1);
-            else if (field == 6) lon_dir = tok[0];
-            else if (field == 9) strncpy(date_str, tok, sizeof(date_str)-1);
-            tok = strtok(NULL, ",");
-            field++;
-        }
-
-        if (status == 'A' && strlen(time_str) >= 6 && strlen(date_str) == 6) {
-            struct tm t = {0};
-            char buf[5] = {0};
-
-            strncpy(buf, time_str, 2); buf[2] = 0; t.tm_hour = atoi(buf);
-            strncpy(buf, time_str+2, 2); buf[2] = 0; t.tm_min = atoi(buf);
-            strncpy(buf, time_str+4, 2); buf[2] = 0; t.tm_sec = atoi(buf);
-
-            strncpy(buf, date_str, 2); buf[2] = 0; t.tm_mday = atoi(buf);
-            strncpy(buf, date_str+2, 2); buf[2] = 0; t.tm_mon = atoi(buf) - 1;
-            strncpy(buf, date_str+4, 2); buf[2] = 0; t.tm_year = atoi(buf) + 100;
-
-            putenv("TZ=UTC");
-            tzset();
-            time_t epoch = mktime(&t);
-            struct timeval tv = { .tv_sec = epoch, .tv_usec = 0 };
-            settimeofday(&tv, NULL);
-            ESP_LOGI(TAG, "Time synced via GPS: %s", asctime(&t));
-
-            double lat = atof(lat_str);
-            double lon = atof(lon_str);
-            gps_lat = (int)(lat/100) + fmod(lat, 100.0)/60.0;
-            if (lat_dir == 'S') gps_lat = -gps_lat;
-            gps_lon = (int)(lon/100) + fmod(lon, 100.0)/60.0;
-            if (lon_dir == 'W') gps_lon = -gps_lon;
-
-            gps_has_fix = true;
-        }
-        free(p);
+static double nmea_to_decimal(const char *value, char direction)
+{
+    if (value == NULL || value[0] == '\0') {
+        return 0.0;
     }
+
+    double raw = strtod(value, NULL);
+    double degrees = floor(raw / 100.0);
+    double minutes = raw - (degrees * 100.0);
+    double decimal = degrees + (minutes / 60.0);
+
+    if (direction == 'S' || direction == 'W') {
+        decimal = -decimal;
+    }
+
+    return decimal;
 }
 
-static void gps_task(void *pvParameters) {
+static void gps_sync_time_from_utc(const char *utc)
+{
+    if (utc == NULL || strlen(utc) < 6) {
+        return;
+    }
+
+    int hour = 0;
+    int minute = 0;
+    int second = 0;
+    if (sscanf(utc, "%2d%2d%2d", &hour, &minute, &second) != 3) {
+        return;
+    }
+
+    time_t now = time(NULL);
+    struct tm current_tm;
+    gmtime_r(&now, &current_tm);
+    current_tm.tm_hour = hour;
+    current_tm.tm_min = minute;
+    current_tm.tm_sec = second;
+    setenv("TZ", "UTC0", 1);
+    tzset();
+
+    time_t synced = mktime(&current_tm);
+    struct timeval tv = {
+        .tv_sec = synced,
+        .tv_usec = 0,
+    };
+    settimeofday(&tv, NULL);
+    ESP_LOGI(TAG, "GPS time synchronized to UTC %02d:%02d:%02d", hour, minute, second);
+}
+
+static void gps_publish_fix(double latitude, double longitude, const char *utc)
+{
+    char message[192];
+    snprintf(message, sizeof(message), "{\"gps\":{\"lat\":%.6f,\"lon\":%.6f,\"utc\":\"%s\"}}",
+             latitude,
+             longitude,
+             utc != NULL ? utc : "");
+    web_server_send_text_async(message);
+}
+
+static void parse_gga_sentence(char *sentence)
+{
+    char *saveptr = NULL;
+    char *field = strtok_r(sentence, ",", &saveptr);
+    int index = 0;
+
+    char utc[16] = {0};
+    char latitude_field[24] = {0};
+    char latitude_direction = 'N';
+    char longitude_field[24] = {0};
+    char longitude_direction = 'E';
+    char fix_quality = '0';
+
+    while (field != NULL) {
+        if (index == 1) {
+            strncpy(utc, field, sizeof(utc) - 1);
+        } else if (index == 2) {
+            strncpy(latitude_field, field, sizeof(latitude_field) - 1);
+        } else if (index == 3 && field[0] != '\0') {
+            latitude_direction = field[0];
+        } else if (index == 4) {
+            strncpy(longitude_field, field, sizeof(longitude_field) - 1);
+        } else if (index == 5 && field[0] != '\0') {
+            longitude_direction = field[0];
+        } else if (index == 6 && field[0] != '\0') {
+            fix_quality = field[0];
+        }
+
+        field = strtok_r(NULL, ",", &saveptr);
+        index++;
+    }
+
+    if (fix_quality == '0' || latitude_field[0] == '\0' || longitude_field[0] == '\0') {
+        return;
+    }
+
+    double latitude = nmea_to_decimal(latitude_field, latitude_direction);
+    double longitude = nmea_to_decimal(longitude_field, longitude_direction);
+
+    portENTER_CRITICAL(&s_fix_mux);
+    s_latitude = latitude;
+    s_longitude = longitude;
+    s_has_fix = true;
+    strncpy(s_utc_time, utc, sizeof(s_utc_time) - 1);
+    s_utc_time[sizeof(s_utc_time) - 1] = '\0';
+    portEXIT_CRITICAL(&s_fix_mux);
+
+    gps_sync_time_from_utc(utc);
+    gps_publish_fix(latitude, longitude, utc);
+
+    ESP_LOGI(TAG, "GPS fix lat=%.6f lon=%.6f", latitude, longitude);
+}
+
+static void gps_uart_task(void *arg)
+{
+    (void)arg;
+
+    uint8_t byte;
+    char line[160];
+    size_t line_len = 0;
+
     while (1) {
-        // Mock a NMEA sentence for demonstration
-        parse_nmea("$GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*6A");
-        vTaskDelay(pdMS_TO_TICKS(10000));
+        int received = uart_read_bytes(GPS_UART, &byte, 1, pdMS_TO_TICKS(100));
+        if (received <= 0) {
+            continue;
+        }
+
+        if (byte == '\r') {
+            continue;
+        }
+
+        if (byte == '\n') {
+            line[line_len] = '\0';
+            if (strncmp(line, "$GPGGA", 6) == 0 || strncmp(line, "$GNGGA", 6) == 0) {
+                char sentence[160];
+                strncpy(sentence, line, sizeof(sentence) - 1);
+                sentence[sizeof(sentence) - 1] = '\0';
+                parse_gga_sentence(sentence);
+            }
+            line_len = 0;
+            continue;
+        }
+
+        if (line_len < sizeof(line) - 1) {
+            line[line_len++] = (char)byte;
+        } else {
+            line_len = 0;
+        }
     }
 }
 
-void gps_parser_init(void) {
-    xTaskCreate(gps_task, "gps_task", 4096, NULL, 5, NULL);
+void gps_parser_init(void)
+{
+    uart_config_t config = {
+        .baud_rate = GPS_UART_BAUD,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_DEFAULT,
+    };
+
+    ESP_ERROR_CHECK(uart_driver_install(GPS_UART, 2048, 0, 0, NULL, 0));
+    ESP_ERROR_CHECK(uart_param_config(GPS_UART, &config));
+    ESP_ERROR_CHECK(uart_set_pin(GPS_UART, GPS_UART_TX, GPS_UART_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+
+    xTaskCreate(gps_uart_task, "gps_uart", 4096, NULL, 5, NULL);
+}
+
+bool gps_parser_get_fix(double *latitude, double *longitude, char *utc_time, size_t utc_time_len)
+{
+    bool has_fix;
+
+    portENTER_CRITICAL(&s_fix_mux);
+    has_fix = s_has_fix;
+    if (has_fix) {
+        if (latitude != NULL) {
+            *latitude = s_latitude;
+        }
+        if (longitude != NULL) {
+            *longitude = s_longitude;
+        }
+        if (utc_time != NULL && utc_time_len > 0) {
+            strncpy(utc_time, s_utc_time, utc_time_len - 1);
+            utc_time[utc_time_len - 1] = '\0';
+        }
+    }
+    portEXIT_CRITICAL(&s_fix_mux);
+
+    return has_fix;
+}
+
+bool gps_parser_has_fix(void)
+{
+    portENTER_CRITICAL(&s_fix_mux);
+    bool has_fix = s_has_fix;
+    portEXIT_CRITICAL(&s_fix_mux);
+    return has_fix;
 }
