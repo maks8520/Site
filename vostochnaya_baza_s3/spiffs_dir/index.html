@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vostok Nexus Cyber-Industrial</title>
+    <style>
+        body {
+            background-color: #0a0a0c;
+            color: #e2e2e2;
+            font-family: 'Space Grotesk', sans-serif;
+            margin: 0;
+            padding: 24px;
+            background-image: repeating-linear-gradient(0deg, transparent, transparent 1px, rgba(255,255,255,0.02) 1px, rgba(255,255,255,0.02) 2px);
+        }
+        .container {
+            max-width: 1440px;
+            margin: 0 auto;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.04);
+            backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 24px;
+        }
+        h1 {
+            color: #d4ff8f;
+            text-shadow: 0 0 10px rgba(212, 255, 143, 0.5);
+            font-size: 32px;
+        }
+        .data-mono {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            color: #7dd3fc;
+        }
+        button {
+            background: #d4ff8f;
+            color: #0a0a0c;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(212, 255, 143, 0.3);
+            margin-right: 8px;
+        }
+        button:hover {
+            box-shadow: 0 0 15px rgba(212, 255, 143, 0.6);
+        }
+        .metar-block {
+            margin-top: 16px;
+            padding: 12px;
+            background: rgba(0,0,0,0.5);
+            border-left: 2px solid #7dd3fc;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+        }
+        th, td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        th {
+            color: #7dd3fc;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+        }
+        .nav-tabs {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 8px;
+        }
+        .nav-tab {
+            color: #e2e2e2;
+            cursor: pointer;
+            padding: 4px 8px;
+        }
+        .nav-tab.active {
+            color: #d4ff8f;
+            border-bottom: 2px solid #d4ff8f;
+        }
+        #settings-tab { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>VOSTOK NEXUS COMMAND</h1>
+
+        <div class="nav-tabs">
+            <div class="nav-tab active" onclick="showTab('dashboard')">ДЭШБОРД</div>
+            <div class="nav-tab" onclick="showTab('settings')">НАСТРОЙКИ</div>
+        </div>
+
+        <div id="dashboard-tab">
+            <div class="glass-card">
+                <h2>Метео-данные (METAR)</h2>
+                <div class="metar-block data-mono" id="metar-data">Ожидание данных...</div>
+                <div style="margin-top: 8px; font-size: 12px; color: #8e9381;">Дистанция до станции: <span id="metar-dist">--</span> км</div>
+            </div>
+
+            <div class="glass-card">
+                <h2>Данные с Удочек</h2>
+                <table class="data-mono">
+                    <thead>
+                        <tr>
+                            <th>MAC</th>
+                            <th>RSSI</th>
+                            <th>БАТАРЕЯ</th>
+                            <th>ПОСЛ. АКТИВНОСТЬ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="udo-table">
+                        <!-- Dynamic content -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="glass-card">
+                <h2>AI Анализ Водоема</h2>
+                <button onclick="alert('Инициирован сбор данных для ИИ')">Разметка зон</button>
+                <button onclick="alert('Калибровка эхолота запущена')">Калибровка</button>
+            </div>
+        </div>
+
+        <div id="settings-tab" class="glass-card">
+            <h2>Настройки Системы</h2>
+            <div class="data-mono" style="margin-bottom: 16px;">
+                Wi-Fi Режим: AP+STA<br>
+                Интервал опроса: 5 мин<br>
+                AI Модель: Vostok-Sense-v1
+            </div>
+            <button>Перезагрузить</button>
+        </div>
+    </div>
+
+    <script>
+        function showTab(tabName) {
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+
+            document.getElementById('dashboard-tab').style.display = tabName === 'dashboard' ? 'block' : 'none';
+            document.getElementById('settings-tab').style.display = tabName === 'settings' ? 'block' : 'none';
+        }
+
+        // WebSocket mock
+        setTimeout(() => {
+            document.getElementById('metar-data').innerText = "UUDD 310230Z 15004MPS 9999 BKN030 15/10 Q1012 R14R/CLRD// NOSIG";
+            document.getElementById('metar-dist').innerText = "42.5";
+            document.getElementById('udo-table').innerHTML = `
+                <tr><td>AA:BB:CC:DD:EE:FF</td><td style="color:#d4ff8f">-65 dBm</td><td>84%</td><td>12 сек назад</td></tr>
+            `;
+        }, 1500);
+    </script>
+</body>
+</html>
