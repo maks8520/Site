@@ -21,6 +21,7 @@
 #include "driver/uart.h"
 #include "driver/gpio.h"
 #include "esp_now_receiver.h"
+#include "esp_spiffs.h"
 
 #define WIFI_SSID "POCO F3"
 #define WIFI_PASS "11111111"
