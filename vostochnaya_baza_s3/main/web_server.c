@@ -39,7 +39,7 @@ static const char *content_type_from_path(const char *path)
 
 static esp_err_t static_handler(httpd_req_t *req)
 {
-    char path[256];
+    char path[600];
     const char *uri = req->uri;
 
     if (strcmp(uri, "/") == 0) {
