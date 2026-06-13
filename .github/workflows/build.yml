@@ -20,6 +20,7 @@ jobs:
       run: git config --global --add safe.directory /__w/Site/Site
 
     - name: Build Vostochnaya Baza (ESP32-S3)
+      shell: bash
       run: |
         set -euo pipefail
         . "$IDF_PATH/export.sh"
@@ -28,6 +29,7 @@ jobs:
         idf.py build
 
     - name: Build Vostochnaya Udochka (ESP32-C3)
+      shell: bash
       run: |
         set -euo pipefail
         . "$IDF_PATH/export.sh"
