@@ -20,14 +20,8 @@
 #include "esp_http_server.h"
 #include "driver/uart.h"
 #include "driver/gpio.h"
-#include "esp_spiffs.h"
+#include "esp_now_receiver.h"
 
-#include "config.h"
-#include "nvs_handler.h"
-#include "esp_now_logic.h"
-
-#undef WIFI_SSID
-#undef WIFI_PASS
 #define WIFI_SSID "POCO F3"
 #define WIFI_PASS "11111111"
 
@@ -347,7 +341,7 @@ void app_main(void) {
     start_webserver();
 
     // 5. Initialize ESP-NOW
-    espnow_init_base();
+    ESP_ERROR_CHECK(esp_now_init());
     ESP_ERROR_CHECK(esp_now_register_recv_cb(on_base_espnow_recv));
 
     // 6. Create queues and tasks
