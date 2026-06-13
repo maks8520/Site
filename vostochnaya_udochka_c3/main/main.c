@@ -1,5 +1,5 @@
 #include <stdio.h>
- feature/udochka-optimization-9862857180887165867
+
 #include <string.h>
 #include <stdlib.h>
 #include "freertos/FreeRTOS.h"
@@ -298,8 +298,4 @@ void app_main(void) {
 
     ESP_LOGI(TAG, "Entering deep sleep");
     esp_deep_sleep_start();
-=======
-void app_main(void) {
-    printf("Vostochnaya Udochka C3 started\n");
- main
 }
