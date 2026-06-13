@@ -1,5 +1,6 @@
 #include <stdio.h>
 
+#include "metar_fetcher.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_err.h"
@@ -8,7 +9,6 @@
 #include "buttons.h"
 #include "esp_now_receiver.h"
 #include "gps_parser.h"
-#include "metar_fetcher.h"
 #include "network_watchdog.h"
 #include "web_server.h"
 #include "wifi_manager.h"
